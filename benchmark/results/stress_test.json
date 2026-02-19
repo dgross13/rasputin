@@ -1,0 +1,56 @@
+{
+  "test": "failover_stress_test",
+  "timestamp": "2026-02-18T12:46:17+0300",
+  "context_chars": 505910,
+  "context_messages": 61,
+  "results": [
+    {
+      "name": "1. PRIMARY: Anthropic (OAT token)",
+      "status": "error",
+      "http_code": "401",
+      "elapsed": 0.6347806453704834,
+      "error": "invalid x-api-key",
+      "payload_kb": 326.34765625
+    },
+    {
+      "name": "2. FALLBACK: OpenCode Zen (free)",
+      "status": "error",
+      "http_code": "403",
+      "elapsed": 0.6435708999633789,
+      "error": "error code: 1010",
+      "payload_kb": 326.34765625
+    },
+    {
+      "name": "3. FALLBACK: OpenRouter",
+      "status": "ok",
+      "http_code": "200",
+      "elapsed": 3.119967460632324,
+      "error": null,
+      "payload_kb": 326.357421875
+    },
+    {
+      "name": "4. FALLBACK: Grok 4.1 (xAI \u2014 different provider)",
+      "status": "error",
+      "http_code": "403",
+      "elapsed": 0.5047702789306641,
+      "error": "error code: 1010",
+      "payload_kb": 326.359375
+    },
+    {
+      "name": "5. FALLBACK: Anthropic Direct (fixed API key)",
+      "status": "ok",
+      "http_code": "200",
+      "elapsed": 5.696780204772949,
+      "error": null,
+      "payload_kb": 326.34765625
+    },
+    {
+      "name": "6. LAST RESORT: Anthropic Direct Sonnet",
+      "status": "ok",
+      "http_code": "200",
+      "elapsed": 4.482717037200928,
+      "error": null,
+      "payload_kb": 326.349609375
+    }
+  ]
+}
