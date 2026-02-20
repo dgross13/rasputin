@@ -33,9 +33,9 @@ The Cartu Method adds a **pre-compaction memory rescue layer** that:
 
 The key insight: **use the cheapest, fastest models for memory extraction, not your expensive reasoning model.** A $0.10/MTok model running in parallel is perfect for "read this context and extract what matters" — you don't need Opus for that.
 
-### Why "Cartu Method"?
+### Origin
 
-Named after Josh Cartu, who developed this approach while running autonomous AI agents 24/7 on a dual-GPU server with 761,000+ persistent memories and 16ms average retrieval time. The method emerged from real production pain, not academic theory.
+This method emerged from running autonomous AI agents 24/7 in production — 761,000+ persistent memories, 16ms average retrieval time. Real production pain, not academic theory.
 
 ## Architecture
 
@@ -206,32 +206,27 @@ Running in production since December 2025 on a dual-GPU server (RTX PRO 6000 + R
 
 ## Citation
 
-If you use the Cartu Method in your research:
+If you use this in your research:
 
 ```bibtex
-@misc{cartu2025method,
-  title={The Cartu Method: Zero-Loss Context Compaction via Parallel Fast-Inference Memory Rescue},
-  author={Cartu, Josh},
+@misc{cartumethod2025,
+  title={Zero-Loss Context Compaction via Parallel Fast-Inference Memory Rescue},
   year={2025},
-  url={https://github.com/jcartu/cartu-method}
+  url={https://github.com/jcartu/rasputin}
 }
 ```
 
 ## Contributing
 
-PRs welcome! Especially for:
-- Additional vector DB backends
+PRs welcome. Especially:
+- Additional vector DB backends (Chroma, Pinecone, Weaviate)
 - Benchmark scripts and datasets
 - Integration guides for other agent frameworks (LangChain, CrewAI, AutoGen)
 - Improved extraction prompts
 
 ## License
 
-MIT — use it however you want.
-
----
-
-*Built by [Josh Cartu](https://github.com/jcartu) and his autonomous AI agent [ALFIE](https://github.com/jcartu/cartu-method), who has 761K reasons to care about memory.*
+MIT
 
 ---
 

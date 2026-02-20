@@ -6,7 +6,7 @@ Every AI agent framework with long-running sessions has the same problem: when t
 - **Debugging context** — the 3-hour auth bug fix journey? Summarized to "fixed auth bug."
 - **Cross-references** — connections that only existed when seeing everything together? Vanished.
 
-I've been running autonomous AI agents 24/7 for months on a dual-GPU server (RTX PRO 6000 + RTX 5090) and hit this wall constantly. My agent would "forget" critical context right after compaction — even though it had been working perfectly 30 seconds earlier.
+After running autonomous AI agents 24/7 for months on a dual-GPU server (RTX PRO 6000 + RTX 5090) and hit this wall constantly. The agent would "forget" critical context right after compaction — even though it had been working perfectly 30 seconds earlier.
 
 ## The Fix: Pre-Compaction Memory Rescue
 
@@ -53,4 +53,4 @@ Open-sourced the full implementation with Qdrant, ChromaDB, and Pinecone backend
 
 Works with any OpenAI-compatible fast inference endpoint. Integrates with OpenClaw's pre-compaction flush hook but works standalone with any agent framework.
 
-Happy to answer questions about the architecture, extraction prompts, or scaling. This has been running in production on my agent server for 3 months and it's been a game-changer for long-running sessions.
+Happy to answer questions about the architecture, extraction prompts, or scaling. This has been running in production on the agent server for 3 months and it's been a game-changer for long-running sessions.

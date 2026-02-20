@@ -2,7 +2,7 @@
 
 I keep seeing posts here about agents "forgetting" things after context compaction. It's the #1 pain point with long-running agents — your agent works perfectly for hours, then context gets summarized and suddenly it can't recall why you chose Postgres over Mongo, or how you fixed that auth bug.
 
-After dealing with this for months running autonomous agents 24/7, I built a solution that's been working in production for 3 months with zero amnesia. Open-sourcing it today.
+After months of running autonomous agents 24/7, this solution has been that's been working in production for 3 months with zero amnesia. Open-sourcing it today.
 
 ## TL;DR
 

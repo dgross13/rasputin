@@ -176,7 +176,7 @@ Commands matching these patterns are blocked before reaching the model. API keys
 
 ## Real-World Results
 
-Running on a production autonomous agent (RASPUTIN) handling 25+ daily cron jobs, interactive chat, sub-agent orchestration, and browser automation:
+Production benchmarks from a 24/7 autonomous agent handling 25+ daily cron jobs, interactive chat, sub-agent orchestration, and browser automation:
 
 | Metric | Opus Only | HYDRA Pipeline |
 |--------|-----------|----------------|
@@ -185,7 +185,7 @@ Running on a production autonomous agent (RASPUTIN) handling 25+ daily cron jobs
 | Quality gate pass rate | N/A | 100% |
 | Failover incidents | Manual | Automatic |
 | Models utilized | 1 | 5 |
-| Context preserved | ~60% | ~95% (Cartu Method) |
+| Context preserved | ~60% | ~95% (pre-compaction rescue) |
 
 **Cost reduction: 99.7% on background tasks. Zero quality regression.**
 
@@ -266,19 +266,19 @@ HYDRA includes a real-time monitoring sidebar showing:
 ## How It Fits Together
 
 ```
- Josh (Telegram/WhatsApp)
+ User (Chat / API)
         │
         ▼
    ┌──────────┐     ┌─────────────┐
-   │ OpenClaw │────▶│    HYDRA    │──▶ Opus (chat)
-   │ Gateway  │     │   :8889     │──▶ MiniMax (crons)
-   │  :18789  │     │             │──▶ Cerebras (compaction)
+   │  Agent   │────▶│    HYDRA    │──▶ Opus (chat)
+   │Framework │     │   :8889     │──▶ MiniMax (crons)
+   │          │     │             │──▶ Cerebras (compaction)
    └──────────┘     └─────────────┘──▶ Zen (fallback)
         │                  │
         ▼                  ▼
    ┌──────────┐     ┌─────────────┐
-   │  Qdrant  │     │  Dashboard  │
-   │ 762K mem │     │  :9001      │
+   │  Vector  │     │  Dashboard  │
+   │    DB    │     │  (optional) │
    └──────────┘     └─────────────┘
 ```
 
@@ -290,15 +290,14 @@ Also: **H**ybrid **Y**ielding **D**istributed **R**outing **A**rchitecture. But 
 
 ## Related
 
-- **[The Cartu Method](https://github.com/jcartu/rasputin)** — Zero-loss context compaction using parallel fast-inference memory rescue
 - **[OpenClaw](https://github.com/openclaw/openclaw)** — The autonomous AI agent framework this pipeline was built for
-- **[MiniMax](https://www.minimax.io/)** — The frontier model that makes cheap bulk inference possible
+- **[MiniMax](https://www.minimax.io/)** — Frontier model that makes cheap bulk inference possible
 - **[Cerebras](https://cerebras.ai/)** — 2000+ tok/s inference for compaction tasks
+
+## Contributing
+
+PRs welcome. If you've integrated a new provider, improved the quality gate scoring, or found edge cases — open an issue or submit a patch.
 
 ## License
 
 MIT — use it, modify it, ship it.
-
----
-
-*Built by Josh Cartu and RASPUTIN (his autonomous AI agent) while trying to stop burning $600/month on cron jobs.*

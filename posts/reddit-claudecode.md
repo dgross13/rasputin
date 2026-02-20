@@ -1,8 +1,8 @@
-# Context compaction keeps killing my work context — here's the system I built to fix it ($0.02/compaction, 761K memories)
+# Context compaction keeps killing my work context — here's the system We built to fix it ($0.02/compaction, 761K memories)
 
 If you've used Claude Code for more than a few hours, you know the pain: context fills up, compaction fires, and suddenly your agent can't remember why you chose that architecture, how you fixed that bug, or what the plan was.
 
-I run autonomous Claude agents 24/7 and got tired of re-explaining context after every compaction. Built a pre-compaction memory rescue system that's been running in production for 3 months with zero amnesia. Just open-sourced it.
+Running autonomous Claude agents 24/7 and got tired of re-explaining context after every compaction. Built a pre-compaction memory rescue system that's been running in production for 3 months with zero amnesia. Just open-sourced it.
 
 ## The trick
 

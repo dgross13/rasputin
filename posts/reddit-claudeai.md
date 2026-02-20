@@ -1,4 +1,4 @@
-# I built a memory system that survives Claude's context compaction — 761K memories, $45 total
+# We built a memory system that survives Claude's context compaction — 761K memories, $45 total
 
 Context compaction is the biggest pain point with long Claude sessions. I've seen multiple threads here about it — your agent loses track of decisions, debugging context, and nuance every time it compacts. The summary keeps the facts but loses the *why*.
 
