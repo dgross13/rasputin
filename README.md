@@ -1,217 +1,196 @@
 # The Cartu Method
 
-**Zero-loss context compaction for AI agents using parallel fast-inference memory rescue.**
+**A framework for persistent memory and cost-efficient inference in autonomous AI agents.**
 
-> When your AI agent compacts its context window, everything important gets summarized into oblivion. The Cartu Method intercepts compaction events and fires parallel calls to fast/cheap models to extract and preserve critical memories in a vector database — before they're lost forever.
+> Your AI agent compacts its context and forgets everything. Your inference bill is $1,000/month for cron jobs that don't need frontier reasoning. The Cartu Method fixes both — and more, as the framework grows.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![arXiv](https://img.shields.io/badge/arXiv-2026.xxxxx-b31b1b.svg)](https://arxiv.org/)
 
 ---
 
-## The Problem
+## What Is This?
 
-Every AI agent framework with long-running sessions hits the same wall: **context window limits**. When the context fills up, the system "compacts" — summarizing the conversation to free up tokens.
+The Cartu Method is a **modular framework** addressing the core infrastructure problems that autonomous AI agents face when running 24/7. Instead of one paper, one repo, one solution — it's a growing collection of components that work together or independently.
 
-The summaries preserve facts and tool outputs, but destroy:
+**Current components:**
+
+| Component | Problem | Result |
+|-----------|---------|--------|
+| [Memory Rescue](#component-1-memory-rescue) | Context compaction destroys critical facts | 100% retention (vs 5% vanilla) |
+| [Inference Routing](#component-2-inference-routing) | Frontier models too expensive for background tasks | 97.9% cost reduction |
+
+**Planned components:** Retrieval optimization, best-of-N consensus, semantic quality scoring, multi-agent coordination, adaptive model selection.
+
+All production-tested. 30+ days continuous operation, 1,400+ daily requests, 762K persistent memories.
+
+---
+
+## Component 1: Memory Rescue
+
+### The Problem
+
+Every agent framework with long-running sessions hits the context window limit. When the system compacts (summarizes the conversation to free tokens), it destroys:
+
+- **Specific values** — port 8889, threshold 0.5, IP 192.168.1.142
 - **Decision rationale** — *why* you chose Postgres over Mongo
 - **Debugging context** — the 3-hour auth bug fix journey
-- **Conversational nuance** — tone, preferences, evolving understanding
-- **Cross-reference chains** — connections that only exist when seeing everything together
+- **Entity relationships** — who said what, when, and why
 
-This isn't a theoretical problem. It's the [#1 complaint](https://github.com/openclaw/openclaw/issues/5429) in long-running AI agent deployments.
+This isn't theoretical. It's the #1 pain point in long-running agent deployments.
 
-## The Solution
+### The Solution
 
-The Cartu Method adds a **pre-compaction memory rescue layer** that:
-
-1. **Detects** when compaction is about to fire (context utilization threshold)
-2. **Extracts** critical memories using parallel calls to fast/cheap inference (Cerebras, Groq, or local models)
-3. **Classifies** each memory by importance using an LLM-based evaluator
-4. **Commits** high-value memories to a vector database (Qdrant, Chroma, Pinecone)
-5. **Indexes** them for instant semantic retrieval in future sessions
-
-The key insight: **use the cheapest, fastest models for memory extraction, not your expensive reasoning model.** A $0.10/MTok model running in parallel is perfect for "read this context and extract what matters" — you don't need Opus for that.
-
-### Origin
-
-This method emerged from running autonomous AI agents 24/7 in production — 761,000+ persistent memories, 16ms average retrieval time. Real production pain, not academic theory.
-
-## Architecture
+Intercept the compaction event. Before the context is summarized, fire parallel calls to **fast, cheap models** (Cerebras at 2000+ tok/s, $0/MTok) to extract and commit critical facts to a vector database.
 
 ```
-┌─────────────────────────────────────────────────┐
-│                 AI Agent Session                 │
-│                                                  │
-│  Context Window: [████████████████░░░░] 80%      │
-│                                                  │
-│  ⚡ COMPACTION THRESHOLD REACHED                  │
-│                                                  │
-├─────────────────────────────────────────────────┤
-│              Cartu Method Layer                   │
-│                                                  │
-│  1. Intercept pre-compaction context             │
-│  2. Fan-out to N parallel fast-inference calls:  │
-│                                                  │
-│     ┌─────────┐ ┌─────────┐ ┌─────────┐        │
-│     │ Extract │ │ Extract │ │ Extract │        │
-│     │ Facts   │ │Decisions│ │ Skills  │        │
-│     │ & Dates │ │& Reasons│ │& Lessons│        │
-│     └────┬────┘ └────┬────┘ └────┬────┘        │
-│          │           │           │               │
-│  3. LLM-based importance scoring (1-10)         │
-│  4. Commit score ≥ 7 to vector DB               │
-│                                                  │
-├─────────────────────────────────────────────────┤
-│            Vector Database (Qdrant)              │
-│                                                  │
-│  761K+ memories │ Hybrid search │ 16ms retrieval │
-│  Semantic + keyword │ Auto-dedup │ Source tags    │
-└─────────────────────────────────────────────────┘
+Context at 80% ──► COMPACTION TRIGGERED
+                         │
+                    ┌─────┼─────┐
+                    ▼     ▼     ▼
+                 Facts  Decisions  Skills
+               (Cerebras, parallel, ~4 seconds)
+                    │     │     │
+                    └─────┼─────┘
+                          ▼
+                    Vector Database
+                   (762K memories)
+                          │
+                    ▼ Compaction proceeds
 ```
 
-## Quick Start
+### Results
 
-### Installation
+| Metric | Vanilla Compaction | Memory Rescue |
+|--------|-------------------|---------------|
+| Fact retention | 5% (1/20) | **100%** (20/20) |
+| Overhead per compaction | 0s | ~4s |
+| Cost per compaction | $0 | ~$0.02 |
+| Retrieval latency | N/A | 700ms mean |
 
-```bash
-pip install cartu-method
-# or
-git clone https://github.com/jcartu/cartu-method.git
-cd cartu-method
-pip install -e .
-```
-
-### Basic Usage
+### Quick Start
 
 ```python
 from cartu_method import MemoryRescue, QdrantBackend
 
-# Initialize with your vector DB and fast model
 rescue = MemoryRescue(
     backend=QdrantBackend(url="http://localhost:6333", collection="agent_memory"),
-    fast_model="cerebras/llama-3.3-70b",  # Fast + cheap for extraction
-    importance_threshold=7,  # Only commit memories scoring 7+/10
-    parallel_extractors=3,   # Fan-out to 3 parallel extraction prompts
+    fast_model="cerebras/llama-3.3-70b",
+    parallel_extractors=3,
 )
 
 # Call before compaction
-pre_compaction_context = get_current_context()  # Your agent's context
-memories = rescue.extract_and_commit(pre_compaction_context)
-
-print(f"Rescued {len(memories)} memories before compaction")
+memories = rescue.extract_and_commit(current_context)
 ```
 
-### OpenClaw Integration
+---
 
-```yaml
-# openclaw.json — add to agent config
-{
-  "compaction": {
-    "mode": "default",
-    "preCompactionFlush": true,
-    "flushPrompt": "Extract and commit critical memories using the Cartu Method pipeline"
-  }
-}
+## Component 2: Inference Routing
+
+### The Problem
+
+Autonomous agents run 25+ scheduled tasks daily — monitoring, reporting, scanning, aggregating. These tasks don't need Claude Opus 4.6 ($15/$75 per MTok). But they still need to not be garbage.
+
+### The Solution
+
+Route requests across multiple models based on task type, with a quality gate that catches bad responses and escalates automatically.
+
+```
+Request ──► Task-Type Router
+               │
+        ┌──────┴──────┐
+    Interactive    Background
+        │              │
+      Opus       MiniMax ($1/$4 MTok)
+        │              │
+        │         Quality Gate
+        │           │      │
+        │        Pass    Fail → Escalate to Opus
+        │           │      │
+        └─────┬─────┘──────┘
+              │
+         Safety Layer (model-independent)
+              │
+           Client
 ```
 
-### Standalone Script
+**Five model heads:** Opus (reasoning) → MiniMax (bulk) → Cerebras (compaction) → OpenCode Zen (free fallback) → Anthropic Direct (paid fallback)
 
-```bash
-# Process a session transcript and extract memories
-python -m cartu_method extract \
-  --input session.jsonl \
-  --backend qdrant \
-  --qdrant-url http://localhost:6333 \
-  --model cerebras/llama-3.3-70b \
-  --threshold 7
+### Results
 
-# Search rescued memories
-python -m cartu_method search "auth bug fix postgres" --limit 5
-```
+| Metric | All-Opus | Inference Routing |
+|--------|----------|-------------------|
+| Daily cost (background) | $35.24 | **$0.73** (97.9% savings) |
+| Monthly projected | $1,057 | **$21.90** |
+| Quality gate pass rate | N/A | 100% (27/27 production) |
+| Escalations needed | N/A | 0 |
+| Latency (budget model) | 3.79s | **2.40s** (1.58× faster) |
 
-## Extraction Prompts
+### Quality Gate
 
-The method uses three parallel extraction perspectives:
+Rule-based scoring (0.0–1.0), no additional LLM call:
+- XML hallucination detection (−0.4)
+- Formatting compliance checks (−0.15 each)
+- System message handling (−0.5)
+- **Threshold: 0.5** → auto-escalate to stronger model
 
-### 1. Facts & Entities
-> Extract all factual information: names, dates, numbers, URLs, configurations, credentials (redacted), technical specs, and concrete decisions made.
+Combined with an 897-character prompt suffix injected for budget models, this achieves 100% production pass rate.
 
-### 2. Decisions & Rationale
-> Extract every decision made in this conversation and WHY it was made. Include alternatives that were considered and rejected, with reasons.
+### Safety Layer (model-independent)
 
-### 3. Skills & Lessons
-> Extract procedural knowledge: how-to steps, debugging techniques, workarounds discovered, patterns that worked, and anti-patterns to avoid.
+- 13 dangerous command patterns blocked
+- 7 protected configuration files
+- 8 API key / credential patterns scrubbed
+- Works regardless of which model generates the response
 
-Each extraction is scored for importance (1-10) by a separate LLM call, and only memories scoring above the threshold are committed.
+---
 
-## Benchmarks
+## Production Numbers
 
-Tested on 50 real agent sessions (coding, research, sysadmin) with manual annotation:
+Running since January 2026 on a dual-GPU server (RTX PRO 6000 + RTX 5090):
 
-| Metric | Vanilla Compaction | Cartu Method | Improvement |
-|--------|-------------------|--------------|-------------|
-| Decision recall after compaction | 23% | 89% | **+287%** |
-| Fact retention (names, dates, configs) | 41% | 94% | **+129%** |
-| Procedural knowledge retention | 18% | 82% | **+356%** |
-| Cross-session context continuity | 12% | 71% | **+492%** |
-| Cost per compaction event | $0.00 | ~$0.02 | +$0.02 |
-| Latency added to compaction | 0ms | ~800ms | +800ms |
+| Metric | Value |
+|--------|-------|
+| Persistent memories | 762,051 |
+| Daily requests | 1,400+ |
+| Scheduled tasks | 25+ |
+| Memory retrieval latency | 700ms mean, 926ms P95 |
+| Compaction amnesia incidents | 0 |
+| Quality gate failures in production | 0 |
+| Uptime | 30+ days continuous |
 
-**Cost analysis:** At ~$0.02 per compaction event (3 parallel Cerebras calls), rescuing 761K memories over 6 months cost approximately $45 total. The alternative — re-explaining lost context to an Opus-class model — costs significantly more in wasted tokens.
+---
 
-## Supported Backends
+## Supported Backends & Models
 
-| Backend | Status | Notes |
-|---------|--------|-------|
-| Qdrant | ✅ Full support | Recommended. Hybrid search, auto-dedup |
-| ChromaDB | ✅ Full support | Good for local/embedded use |
-| Pinecone | ✅ Full support | Managed cloud option |
-| Weaviate | 🔜 Planned | PR welcome |
-| SQLite + FTS | 🔜 Planned | Zero-dependency fallback |
+**Vector databases:** Qdrant (recommended), ChromaDB, Pinecone. Weaviate planned.
 
-## Supported Fast Models
+**Fast extraction models:** Cerebras (recommended, 2000+ tok/s), Groq, local via Ollama.
 
-Any model accessible via OpenAI-compatible API works. Recommended for extraction:
+**Budget routing models:** MiniMax M2.5-Highspeed (tested), any Anthropic-compatible API.
 
-| Provider | Model | Speed | Cost | Notes |
-|----------|-------|-------|------|-------|
-| **Cerebras** | Llama 3.3 70B | ~2000 tok/s | $0.10/MTok | Fastest option |
-| **Groq** | Llama 3.3 70B | ~1200 tok/s | $0.10/MTok | Very fast |
-| **Ollama** (local) | Qwen 2.5 72B | ~40 tok/s | Free | Privacy-first |
-| **OpenRouter** | Various | Varies | Varies | Fallback |
+**Agent frameworks:** OpenClaw (native integration), adaptable to LangChain/CrewAI/AutoGen.
 
-## How It Compares
+---
 
-| System | Memory Creation | Memory Retrieval | Learns from Feedback | Cost |
-|--------|----------------|------------------|---------------------|------|
-| Vanilla RAG | Manual/bulk ingest | Semantic similarity | ❌ | Low |
-| MemGPT/Letta | LLM self-edit | Structured memory | ❌ | High |
-| Mem0 | Auto-extract | Semantic + graph | ❌ | Medium |
-| **MemRL** | Episode recording | **RL Q-value ranking** | ✅ | Medium |
-| **Cartu Method** | **Pre-compaction rescue** | Semantic hybrid | ❌ (see below) | **Very low** |
-| **Cartu + MemRL** | Pre-compaction rescue | RL Q-value ranking | ✅ | Low |
+## Paper
 
-**The Cartu Method is complementary to MemRL** ([arXiv:2601.03192](https://arxiv.org/abs/2601.03192)). Cartu focuses on *what gets remembered* (creation), MemRL focuses on *what gets retrieved* (selection). Combined, you get both zero-loss memory creation AND utility-aware retrieval.
+The full technical paper with benchmarks, related work comparison, and limitations is available:
 
-## Production Results
+- **PDF:** [`paper/cartu_method.pdf`](./paper/cartu_method.pdf)
+- **LaTeX source:** [`paper/cartu_method.tex`](./paper/cartu_method.tex)
+- **Benchmark data:** [`paper/benchmark_results.json`](./paper/benchmark_results.json)
 
-Running in production since December 2025 on a dual-GPU server (RTX PRO 6000 + RTX 5090):
-
-- **761,000+ memories** committed to Qdrant
-- **16ms average retrieval** latency
-- **Zero context amnesia** across 2,500+ compaction events
-- **$45 total cost** for 3 months of memory extraction
-- Agent successfully recalls decisions, configurations, and debugging sessions from months ago
+arXiv submission pending.
 
 ## Citation
 
-If you use this in your research:
-
 ```bibtex
-@misc{cartumethod2025,
-  title={Zero-Loss Context Compaction via Parallel Fast-Inference Memory Rescue},
-  year={2025},
+@misc{cartumethod2026,
+  title={The Cartu Method: A Framework for Persistent Memory and
+         Cost-Efficient Inference in Autonomous AI Agents},
+  year={2026},
   url={https://github.com/jcartu/rasputin}
 }
 ```
@@ -219,23 +198,12 @@ If you use this in your research:
 ## Contributing
 
 PRs welcome. Especially:
-- Additional vector DB backends (Chroma, Pinecone, Weaviate)
+- Additional vector DB backends
 - Benchmark scripts and datasets
-- Integration guides for other agent frameworks (LangChain, CrewAI, AutoGen)
+- Integration guides for agent frameworks
+- New framework components
 - Improved extraction prompts
 
 ## License
 
 MIT
-
----
-
-## Also in This Repo
-
-### 🐉 [HYDRA Pipeline](./hydra/)
-
-A multi-headed inference pipeline that routes AI agent traffic across frontier models (Opus, MiniMax, Cerebras), compresses context with fast-inference engines, and auto-escalates on quality failures — cutting costs 99.7% without losing output quality.
-
-**Heads:** Claude Opus 4.6 (reasoning) → MiniMax M2.5 (bulk) → Cerebras GLM-4.7 (compaction) → OpenCode Zen (free fallback)
-
-[Read the full writeup →](./hydra/README.md)

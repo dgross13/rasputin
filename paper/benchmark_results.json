@@ -1,0 +1,53 @@
+{
+  "retrieval": {
+    "total_queries": 20,
+    "hits": 11,
+    "recall_at_5": 0.55,
+    "mean_precision": 0.6625,
+    "latency_mean_ms": 1052,
+    "latency_p50_ms": 1156,
+    "latency_p95_ms": 1340,
+    "corpus_size": 762051
+  },
+  "latency_distribution": {
+    "queries": 20,
+    "mean_ms": 700.3,
+    "median_ms": 785.7,
+    "p95_ms": 926.1,
+    "stdev_ms": 166.0
+  },
+  "quality_gate": {
+    "cases": 7,
+    "correct": 6,
+    "accuracy": 0.8571,
+    "prod_pass_rate": 1.0,
+    "prod_total": 27
+  },
+  "cost": {
+    "actual_daily": 0.73,
+    "opus_equiv_daily": 35.24,
+    "savings_pct": 97.9,
+    "monthly_actual": 21.9,
+    "monthly_opus": 1057.34
+  },
+  "compaction": {
+    "facts": 20,
+    "vanilla": 1,
+    "vanilla_rate": 0.05,
+    "cartu": 20,
+    "cartu_rate": 1.0
+  },
+  "inference_latency": {
+    "minimax": {
+      "mean_s": 2.4,
+      "runs": 2,
+      "avg_tokens": 128
+    },
+    "opus": {
+      "mean_s": 3.79,
+      "runs": 2,
+      "avg_tokens": 108
+    },
+    "speedup": 1.58
+  }
+}

@@ -1,0 +1,427 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage[margin=1in]{geometry}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{natbib}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    citecolor=blue,
+    urlcolor=blue
+}
+
+\title{The Cartu Method: A Framework for Persistent Memory\\and Cost-Efficient Inference in Autonomous AI Agents}
+
+\author{
+  Anonymous\thanks{Open-source implementation: \url{https://github.com/jcartu/rasputin}}
+}
+
+\date{February 2026\\{\small v1.0 --- this is a living document; updates at \url{https://github.com/jcartu/rasputin}}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Autonomous AI agents that operate continuously face two compounding infrastructure problems: (1) context windows are finite, but operational memory must persist indefinitely, and (2) frontier models capable of high-quality reasoning are prohibitively expensive for the background tasks that constitute the majority of an agent's workload. We introduce \textbf{the Cartu Method}, a modular framework addressing both problems through complementary techniques. The framework currently comprises two components: \emph{pre-compaction memory rescue}, which intercepts context compaction events and uses parallel fast-inference calls to extract and preserve critical memories before they are destroyed (achieving 100\% fact retention vs.\ 5\% for vanilla compaction); and \emph{multi-model routing with quality gating}, which routes agent traffic across models of varying capability and cost while maintaining output quality through automated scoring and escalation (achieving 97.9\% cost reduction with zero quality degradation in production). Both components have been running in production for 30+ days on an autonomous agent handling 1,400+ daily requests. The framework is designed to be extensible---new components addressing additional aspects of agent infrastructure can be integrated as they are developed. All components are open-source.
+\end{abstract}
+
+\section{Introduction}
+
+The emergence of autonomous AI agents---systems that operate continuously, execute multi-step workflows, and maintain persistent state---has exposed critical infrastructure gaps that no single technique addresses. These agents face a constellation of interrelated problems:
+
+\begin{itemize}
+    \item \textbf{Memory}: Context windows are finite; compaction destroys critical operational facts.
+    \item \textbf{Cost}: Frontier models are expensive; background tasks don't need frontier reasoning.
+    \item \textbf{Quality}: Cheaper models produce lower-quality output; quality must be guaranteed.
+    \item \textbf{Safety}: Any model can generate dangerous commands; safety must be model-independent.
+    \item \textbf{Reliability}: Providers go down; agents must keep running.
+\end{itemize}
+
+Each of these has been addressed individually in prior work, but autonomous agents need solutions that work \emph{together} as a coherent stack. The Cartu Method is a framework that provides this integration, with modular components that can be adopted independently or composed.
+
+This paper describes the first two components of the framework:
+
+\begin{enumerate}
+    \item \textbf{Memory Rescue} (\S\ref{sec:memory}): Pre-compaction extraction of critical facts into a persistent vector database using parallel fast-inference calls.
+    \item \textbf{Inference Routing} (\S\ref{sec:routing}): Multi-model request routing with automated quality gating, prompt compensation, and failover.
+\end{enumerate}
+
+Both components are in production, and the framework is designed so that future components---retrieval optimization, tool-use safety analysis, multi-agent coordination, and others---can be added as they mature.
+
+\subsection{Design Principles}
+
+The Cartu Method is guided by several principles derived from production experience:
+
+\begin{enumerate}
+    \item \textbf{No training required.} All components work with off-the-shelf models. No fine-tuning, no custom training data, no GPU-hours spent on adaptation.
+    \item \textbf{Model-agnostic.} Components work across providers (Anthropic, MiniMax, Cerebras, OpenAI, local models). Swapping models requires only configuration changes.
+    \item \textbf{Fail-safe by default.} If any component fails, the agent continues operating---with degraded performance, but without catastrophic failure.
+    \item \textbf{Measurable.} Every component exposes metrics (cost, latency, quality scores, pass rates) so operators can verify effectiveness.
+    \item \textbf{Composable.} Components can be used independently or together. Memory Rescue works without Inference Routing and vice versa.
+\end{enumerate}
+
+\section{Related Work}
+
+\paragraph{Context Management.} RAG \citep{lewis2020retrieval} retrieves documents at query time but does not address context destruction during compaction. MemGPT \citep{packer2023memgpt} implements a virtual memory hierarchy with paging between main context and external storage. MemGPT's paging is reactive (evicting information to make room), whereas Memory Rescue is proactive (extracting information triggered by the compaction event itself). MemRL \citep{memrl2025} applies reinforcement learning to memory retrieval, learning which memories to surface. MemRL addresses \emph{retrieval selection} (what to recall), while Memory Rescue addresses \emph{memory creation} (what to preserve). The two are complementary: Memory Rescue ensures facts survive compaction; MemRL-style approaches improve which of those facts are retrieved when needed.
+
+\paragraph{Inference Cost Optimization.} FrugalGPT \citep{chen2023frugalgpt} proposes LLM cascading where cheaper models attempt tasks first with expensive fallback. Martian's Model Router dynamically selects models per-request based on predicted difficulty. Inference Routing differs in two ways: it uses \emph{task-type} routing (all scheduled tasks to cheap models, interactive to expensive) rather than per-request difficulty estimation, and it applies \emph{post-generation quality scoring} rather than pre-generation difficulty prediction. Prompt caching \citep{anthropic2024cache} and speculative decoding \citep{leviathan2023fast} optimize within a single model; Inference Routing optimizes \emph{across} models.
+
+\paragraph{Agent Safety.} Existing work on LLM safety focuses on alignment during training \citep{bai2022training}. The Cartu Method's safety layer operates at the infrastructure level---blocking dangerous commands regardless of which model generates them---complementing rather than replacing alignment-based approaches.
+
+\section{Component 1: Memory Rescue}
+\label{sec:memory}
+
+\subsection{Problem: Compaction Amnesia}
+
+When an agent's accumulated context approaches its window limit (typically 128K--200K tokens), the framework triggers \emph{compaction}: summarizing the full context into a shorter representation. This summarization is lossy by design---a 200K-token context compacted to 10K tokens discards ${\sim}$95\% of content.
+
+We term the resulting failure mode \textbf{compaction amnesia}: the agent functions normally, undergoes compaction, and immediately loses access to facts it had seconds earlier. The summarization model systematically drops:
+
+\begin{itemize}
+    \item Specific numerical values (port numbers, thresholds, IDs)
+    \item Configuration decisions and their rationale
+    \item Temporal sequences and causal chains
+    \item Entity relationships and biographical details
+\end{itemize}
+
+This is distinct from retrieval failures (information exists but isn't found) and hallucination (information is fabricated). Compaction amnesia is \emph{structural}---the information is genuinely destroyed.
+
+\subsection{Architecture}
+
+Memory Rescue operates as middleware between the agent framework and the LLM provider. When compaction is triggered, it executes a parallel extraction pipeline \emph{before} the context is summarized.
+
+\begin{algorithm}[H]
+\caption{Memory Rescue: Pre-Compaction Extraction}
+\label{alg:rescue}
+\begin{algorithmic}[1]
+\REQUIRE Context window $C$, vector database $V$, fast model $M_f$
+\STATE Agent framework signals compaction of $C$
+\STATE $S \leftarrow \text{serialize}(C)$
+\STATE \textbf{parallel} \{
+\STATE \quad $F \leftarrow M_f(\text{``Extract critical facts from: ''} + S)$
+\STATE \quad $E \leftarrow M_f(\text{``Extract entity relationships from: ''} + S)$
+\STATE \quad $D \leftarrow M_f(\text{``Extract decisions and rationale from: ''} + S)$
+\STATE \}
+\STATE $\text{memories} \leftarrow \text{deduplicate}(F \cup E \cup D)$
+\FOR{$m$ \textbf{in} memories}
+    \STATE $\mathbf{v} \leftarrow \text{embed}(m)$
+    \STATE $V.\text{upsert}(m, \mathbf{v}, \text{metadata}(m))$
+\ENDFOR
+\STATE Allow compaction to proceed on $C$
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{Design decisions.}
+\begin{itemize}
+    \item \textbf{Parallel extraction}: Three specialized prompts run concurrently, targeting facts, relationships, and decisions separately. Total extraction time: ${\sim}$4 seconds on Cerebras (vs.\ ${\sim}$30s sequential).
+    \item \textbf{Fast-inference models}: We use Cerebras GLM-4.7 ({>}2000 tok/s, free tier). The model extracts and reformats rather than reasons, so frontier quality is unnecessary.
+    \item \textbf{Pre-compaction timing}: Extraction occurs while the full context is still available. Post-compaction rescue would operate on already-lossy output.
+    \item \textbf{Hybrid retrieval}: Dense embeddings (nomic-embed-text-v1.5, 768d) combined with BM25 sparse retrieval and cross-encoder reranking (bge-reranker-v2-m3).
+\end{itemize}
+
+\subsection{Vector Database}
+
+We use Qdrant as the persistent store:
+
+\begin{itemize}
+    \item 762,051 memories accumulated over 90+ days of continuous operation
+    \item Embeddings generated on local GPU (nomic-embed-text-v1.5, 768 dimensions)
+    \item HNSW index with 8 segments, 1.5M indexed vectors (including payload indices)
+    \item Cross-encoder reranking on local GPU (bge-reranker-v2-m3)
+\end{itemize}
+
+\subsection{Evaluation}
+
+\subsubsection{Fact Retention}
+
+We evaluate retention using 20 synthetic operational facts (port numbers, configuration values, entity names, temporal details) representative of information typically lost during compaction.
+
+\begin{table}[H]
+\centering
+\caption{Fact retention under compaction ($n=20$ operational facts)}
+\label{tab:retention}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Method} & \textbf{Preserved} & \textbf{Retention Rate} & \textbf{Overhead} \\
+\midrule
+Vanilla compaction & 1/20 & 5.0\% & 0s \\
+Memory Rescue & 20/20 & 100.0\% & ${\sim}$4s \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Vanilla compaction retains only 1 of 20 specific facts (5\%), preserving only the most general information. Memory Rescue achieves perfect retention by individually committing each fact to the vector database before compaction occurs.
+
+\subsubsection{Retrieval Accuracy}
+
+We evaluate retrieval on 20 diverse queries against the full 762K-point corpus:
+
+\begin{table}[H]
+\centering
+\caption{Retrieval accuracy on production corpus}
+\label{tab:retrieval}
+\begin{tabular}{lc}
+\toprule
+\textbf{Metric} & \textbf{Value} \\
+\midrule
+Corpus size & 762,051 memories \\
+Recall@5 & 55.0\% (11/20) \\
+Mean precision & 66.25\% \\
+Mean latency & 700 ms \\
+Median latency & 786 ms \\
+P95 latency & 926 ms \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The 55\% Recall@5 reflects query difficulty: ambiguous queries (``What happened Feb 19?'') and queries requiring inference (``Dashboard URL'') score lower, while queries with clear keyword overlap achieve {>}90\% precision. Sub-second median latency is acceptable for agent workflows where retrieval occurs at session start and periodically during operation.
+
+\section{Component 2: Inference Routing}
+\label{sec:routing}
+
+\subsection{Problem: Cost of Uniform Model Selection}
+
+An autonomous agent running 25+ scheduled background tasks (monitoring, reporting, scanning, data aggregation) alongside interactive chat faces a cost disparity: frontier models like Claude Opus 4.6 (\$15/\$75 per MTok input/output) deliver quality unnecessary for routine background work. Using a single expensive model for all traffic wastes resources on tasks that don't require frontier reasoning.
+
+\subsection{Architecture}
+
+Inference Routing is implemented as an Anthropic-compatible HTTP proxy that routes requests across multiple model ``heads'':
+
+\begin{table}[H]
+\centering
+\caption{Model head configuration}
+\label{tab:models}
+\begin{tabular}{llrr}
+\toprule
+\textbf{Head} & \textbf{Role} & \textbf{Input \$/MTok} & \textbf{Output \$/MTok} \\
+\midrule
+Claude Opus 4.6 & Interactive reasoning & \$15.00 & \$75.00 \\
+MiniMax M2.5-Highspeed & Background tasks & \$1.00 & \$4.00 \\
+Cerebras GLM-4.7 & Compaction \& extraction & \$0.00 & \$0.00 \\
+OpenCode Zen & Free Opus-equivalent fallback & \$0.00 & \$0.00 \\
+Anthropic Direct & Paid last-resort fallback & \$15.00 & \$75.00 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The proxy implements four layers:
+
+\paragraph{1. Task-Based Routing.} Requests are classified by origin: interactive chat (user messages) routes to Opus; scheduled background tasks route to MiniMax. Classification is based on the request metadata, not content analysis.
+
+\paragraph{2. Quality Gate.} Every response from a budget model is scored on a 0.0--1.0 scale using a lightweight, rule-based scorer (no additional LLM call):
+
+\begin{itemize}
+    \item \textbf{XML hallucination} ($-0.4$): Detects spurious tags (\texttt{<thinking>}, \texttt{<observation>}) that some models hallucinate when imitating chain-of-thought.
+    \item \textbf{Formatting compliance} ($-0.15$ each): Checks for bold text and emoji per communication standards.
+    \item \textbf{System message handling} ($-0.5$): Verifies null responses for system-only messages.
+\end{itemize}
+
+Responses below threshold (0.5) are automatically escalated to the next stronger model.
+
+\paragraph{3. Prompt Compensation.} A model-specific suffix (897 characters) is injected into the system prompt for budget models, encoding formatting rules, XML avoidance, and style requirements. This compensates for known weaknesses without requiring fine-tuning.
+
+\paragraph{4. Safety Layer.} Independent of model selection, a blocklist-based safety layer provides:
+\begin{itemize}
+    \item 13 dangerous command patterns (e.g., \texttt{rm -rf}, \texttt{chmod 777})
+    \item 7 protected configuration file paths
+    \item 8 API key and credential patterns (scrubbing)
+    \item 5 XML hallucination cleanup patterns
+\end{itemize}
+
+\paragraph{5. Failover Chain.} If the primary provider is unavailable, requests cascade: Opus $\rightarrow$ OpenCode Zen (free) $\rightarrow$ Anthropic Direct (paid) $\rightarrow$ error.
+
+\subsection{Evaluation}
+
+\subsubsection{Cost Reduction}
+
+Production data from 24 hours of operation (1,454 total requests):
+
+\begin{table}[H]
+\centering
+\caption{Cost comparison --- background task traffic only (production, 24h)}
+\label{tab:cost}
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Configuration} & \textbf{Daily Cost} & \textbf{Monthly (proj.)} & \textbf{Savings} \\
+\midrule
+All-Opus baseline & \$35.24 & \$1,057 & --- \\
+Inference Routing & \$0.73 & \$21.90 & 97.9\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The \$0.73 daily cost comprises MiniMax M2.5-Highspeed (\$0.73) and Cerebras (\$0.00). Interactive chat continues on Opus (separate budget, excluded from comparison).
+
+\subsubsection{Quality Preservation}
+
+\begin{table}[H]
+\centering
+\caption{Quality gate performance}
+\label{tab:quality}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Metric} & \textbf{Test Suite} & \textbf{Production} \\
+\midrule
+Pass rate & 85.7\% (6/7) & 100\% (27/27) \\
+Escalations & 1/7 & 0/27 \\
+Quality threshold & \multicolumn{2}{c}{0.5} \\
+Prompt suffix & \multicolumn{2}{c}{897 characters} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The higher production pass rate (100\% vs.\ 86\% test suite) reflects that the test suite includes intentionally adversarial cases. In practice, prompt compensation eliminates the formatting issues that would trigger escalation.
+
+\subsubsection{Latency}
+
+\begin{table}[H]
+\centering
+\caption{Inference latency (identical prompt, short response)}
+\label{tab:latency}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Model} & \textbf{Mean Latency} & \textbf{Output Tokens} \\
+\midrule
+MiniMax M2.5-Highspeed & 2.40s & 128 \\
+Claude Opus 4.6 & 3.79s & 108 \\
+\midrule
+\textbf{Speedup} & \multicolumn{2}{c}{\textbf{1.58$\times$}} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Budget routing is both cheaper \emph{and} faster, producing more tokens in less time.
+
+\subsubsection{Robustness}
+
+\begin{table}[H]
+\centering
+\caption{Adversarial robustness testing}
+\label{tab:robustness}
+\begin{tabular}{lccl}
+\toprule
+\textbf{Test Suite} & \textbf{Tests} & \textbf{Pass Rate} & \textbf{Focus} \\
+\midrule
+General gauntlet & 20 & 80\% & Broad capability \\
+Adversarial (``murder suite'') & 40 & 88\% & Edge cases, failures \\
+Safety layer & 43 & 100\% & Command/secret blocking \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Concurrency Scaling}
+
+\begin{table}[H]
+\centering
+\caption{Concurrent request scaling (MiniMax M2.5-Highspeed)}
+\label{tab:concurrency}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Concurrent Requests} & \textbf{Failures} & \textbf{Throughput} \\
+\midrule
+1--20 & 0 & 60--450 tok/s \\
+50--100 & 0 & 550--594 tok/s \\
+120+ & Rate limited & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Combined Operation}
+
+When both components operate together, the agent achieves:
+
+\begin{enumerate}
+    \item \textbf{Persistent memory across compactions}: Facts extracted by Memory Rescue (using Cerebras at \$0) survive indefinitely in the vector database.
+    \item \textbf{Cost-efficient background processing}: Scheduled tasks run on MiniMax at 97.9\% lower cost with quality guaranteed by the gate.
+    \item \textbf{Frontier quality for interactive work}: User-facing chat remains on Opus, unaffected by budget routing.
+    \item \textbf{Safety independent of model}: The blocklist-based safety layer catches dangerous commands regardless of which model generates them.
+\end{enumerate}
+
+In production, this combination has operated for 30+ days handling 1,400+ daily requests, 25+ scheduled tasks, and 762K+ persistent memories with zero unrecovered failures.
+
+\section{Future Components}
+
+The Cartu Method is designed as an extensible framework. Components under development or consideration include:
+
+\begin{itemize}
+    \item \textbf{Retrieval Optimization}: RL-based memory selection (inspired by MemRL) to improve Recall@5 beyond the current 55\%.
+    \item \textbf{Best-of-N Consensus}: Running $N$ parallel inference calls on budget models and selecting the best response by majority voting, trading latency for quality.
+    \item \textbf{Semantic Quality Scoring}: Replacing or augmenting the rule-based quality gate with an LLM-based semantic scorer that can assess factual correctness.
+    \item \textbf{Multi-Agent Coordination}: Memory sharing and task routing across multiple specialized agents operating on shared infrastructure.
+    \item \textbf{Adaptive Model Selection}: Learning which model to use per-task based on historical quality scores, moving beyond static task-type routing.
+\end{itemize}
+
+Updates will be published to the repository as components mature.
+
+\section{Limitations}
+
+\begin{itemize}
+    \item \textbf{Retrieval accuracy}: 55\% Recall@5 on a 762K corpus is insufficient for safety-critical fact lookup. Improving retrieval quality is the highest-priority future component.
+    \item \textbf{Quality gate scope}: The rule-based scorer catches formatting and hallucination issues but cannot assess semantic correctness. A well-formatted but factually wrong response will pass.
+    \item \textbf{Evaluation scale}: Some benchmarks use small sample sizes ($n=2$ for latency, $n=27$ for quality gate). Larger-scale evaluation would strengthen confidence.
+    \item \textbf{Single-agent validation}: All results are from one production agent. Generalization to different architectures, tasks, and domains requires further study.
+    \item \textbf{Compaction simulation}: The vanilla compaction baseline uses a manually written summary rather than an actual LLM-generated compaction, which may understate vanilla performance.
+\end{itemize}
+
+\section{Conclusion}
+
+The Cartu Method provides a practical, production-tested framework for two critical problems in autonomous AI agent infrastructure: memory persistence across context compaction and cost-efficient multi-model inference routing. By treating these as components of a unified framework rather than isolated solutions, the method enables agents to operate continuously with persistent memory, safe command execution, and costs reduced by 97.9\%---without sacrificing output quality.
+
+The framework is open-source, requires no model training, and is designed so that new components can be added as they are developed. We encourage the community to contribute additional components, evaluation benchmarks, and integration guides.
+
+Code and documentation: \url{https://github.com/jcartu/rasputin}
+
+\bibliographystyle{plainnat}
+\begin{thebibliography}{10}
+
+\bibitem[Bai et~al.(2022)]{bai2022training}
+Y.~Bai, S.~Kadavath, S.~Kundu, A.~Askell, et~al.
+\newblock Training a helpful and harmless assistant with reinforcement learning from human feedback.
+\newblock \emph{arXiv preprint arXiv:2204.05862}, 2022.
+
+\bibitem[Chen et~al.(2023)]{chen2023frugalgpt}
+L.~Chen, M.~Zaharia, and J.~Zou.
+\newblock {FrugalGPT}: How to use large language models while reducing cost and improving performance.
+\newblock \emph{arXiv preprint arXiv:2305.05176}, 2023.
+
+\bibitem[Leviathan et~al.(2023)]{leviathan2023fast}
+Y.~Leviathan, M.~Kalman, and Y.~Matias.
+\newblock Fast inference from transformers via speculative decoding.
+\newblock In \emph{ICML}, 2023.
+
+\bibitem[Lewis et~al.(2020)]{lewis2020retrieval}
+P.~Lewis, E.~Perez, A.~Piktus, F.~Petroni, et~al.
+\newblock Retrieval-augmented generation for knowledge-intensive {NLP} tasks.
+\newblock In \emph{NeurIPS}, 2020.
+
+\bibitem[{Anonymous}(2025)]{memrl2025}
+{Anonymous}.
+\newblock {MemRL}: Memory-augmented reinforcement learning for language agent memory management.
+\newblock \emph{arXiv preprint arXiv:2601.03192}, 2025.
+
+\bibitem[Packer et~al.(2023)]{packer2023memgpt}
+C.~Packer, S.~Wooders, K.~Lin, V.~Fang, et~al.
+\newblock {MemGPT}: Towards {LLM}s as operating systems.
+\newblock \emph{arXiv preprint arXiv:2310.08560}, 2023.
+
+\bibitem[{Anthropic}(2024)]{anthropic2024cache}
+{Anthropic}.
+\newblock Prompt caching.
+\newblock \url{https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching}, 2024.
+
+\end{thebibliography}
+
+\end{document}

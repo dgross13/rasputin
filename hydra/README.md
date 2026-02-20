@@ -1,6 +1,8 @@
 # HYDRA 🐉
 
-**A multi-headed inference pipeline that routes AI agent traffic across frontier models, compresses context with fast-inference engines, and auto-escalates on quality failures — cutting costs 99.7% without losing output quality.**
+**Part of [The Cartu Method](../README.md) — Component 2: Inference Routing**
+
+A multi-headed inference pipeline that routes AI agent traffic across frontier models, compresses context with fast-inference engines, and auto-escalates on quality failures — cutting costs 97.9% without losing output quality.
 
 > One proxy. Multiple model heads. Intelligent routing. Automatic failover. Zero compromises.
 
