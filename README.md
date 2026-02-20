@@ -232,3 +232,15 @@ MIT — use it however you want.
 ---
 
 *Built by [Josh Cartu](https://github.com/jcartu) and his autonomous AI agent [ALFIE](https://github.com/jcartu/cartu-method), who has 761K reasons to care about memory.*
+
+---
+
+## Also in This Repo
+
+### 🐉 [HYDRA Pipeline](./hydra/)
+
+A multi-headed inference pipeline that routes AI agent traffic across frontier models (Opus, MiniMax, Cerebras), compresses context with fast-inference engines, and auto-escalates on quality failures — cutting costs 99.7% without losing output quality.
+
+**Heads:** Claude Opus 4.6 (reasoning) → MiniMax M2.5 (bulk) → Cerebras GLM-4.7 (compaction) → OpenCode Zen (free fallback)
+
+[Read the full writeup →](./hydra/README.md)
