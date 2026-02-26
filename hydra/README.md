@@ -1,10 +1,10 @@
-# HYDRA 🐉
+# HYDRA
 
 **Part of [The Cartu Method](../README.md) — Component 2: Inference Routing**
 
-A multi-headed inference pipeline that routes AI agent traffic across frontier models, compresses context with fast-inference engines, and auto-escalates on quality failures — cutting costs 97.9% without losing output quality.
+A multi-headed inference proxy that routes AI agent traffic across frontier models, translates between API formats, and auto-escalates on quality failures — cutting costs dramatically without losing output quality.
 
-> One proxy. Multiple model heads. Intelligent routing. Automatic failover. Zero compromises.
+> One proxy. Multiple model heads. Intelligent routing. Quality gating. Zero compromises.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
@@ -20,83 +20,101 @@ Running autonomous AI agents 24/7 is expensive. A single Opus-class model at $15
 
 ## The Solution
 
-HYDRA is a transparent proxy that sits between your AI agent framework (OpenClaw, LangChain, CrewAI, etc.) and your LLM providers. It speaks the Anthropic Messages API on both sides, so your agent doesn't know it exists.
+HYDRA is a transparent proxy that sits between your AI agent framework and your LLM providers. It exposes an **OpenAI-compatible** `/v1/chat/completions` API on the client side and internally translates to each provider's native format (e.g., Anthropic Messages API for Claude models). Your agent talks standard OpenAI — HYDRA handles the rest.
 
 ```
                          ┌──────────────┐
                          │   AI Agent   │
-                         │  (OpenClaw)  │
+                         │  (Nanobot)   │
                          └──────┬───────┘
-                                │ Anthropic API
+                                │ OpenAI-compatible API
                          ┌──────▼───────┐
                          │    HYDRA     │
-                         │    Proxy     │
+                         │  :8300       │
                          └──┬───┬───┬───┘
                             │   │   │
               ┌─────────────┤   │   ├─────────────┐
               │             │   │   │             │
-        ┌─────▼─────┐ ┌────▼───▼┐ ┌▼─────────┐ ┌─▼────────┐
-        │  Opus 4.6 │ │ MiniMax │ │ Cerebras  │ │ OpenCode │
-        │  (OAuth)  │ │  M2.5   │ │ GLM-4.7   │ │   Zen    │
-        │  $15/$75  │ │$0.30/$2 │ │ $0.60/$1  │ │   FREE   │
-        │ Reasoning │ │ Bulk AI │ │Compaction │ │ Fallback │
-        └───────────┘ └─────────┘ └───────────┘ └──────────┘
+        ┌─────▼─────┐ ┌────▼───▼┐ ┌▼─────────┐ ┌▼──────────┐
+        │  Opus 4.6 │ │Sonnet   │ │ MiniMax   │ │ Cerebras  │
+        │(Anthropic)│ │  4.5    │ │ M2.5      │ │ GLM-4.7   │
+        │ $15/$75   │ │ $3/$15  │ │$0.30/$2.40│ │$0.60/$0.60│
+        │ Reasoning │ │Mid-tier │ │ Bulk AI   │ │Compaction │
+        └───────────┘ └─────────┘ └───────────┘ └───────────┘
 ```
 
 ### The Heads
 
-| Head | Model | Role | Cost/MTok | Speed |
-|------|-------|------|-----------|-------|
-| 🟣 **Opus** | Claude Opus 4.6 | Interactive chat, complex reasoning | $15/$75 | ~30 tok/s |
-| ⚡ **MiniMax** | M2.5 Highspeed | Background tasks, crons, sub-agents | $0.30/$2.40 | 100+ tok/s |
-| 🧠 **Cerebras** | GLM-4.7 | Context compaction (summarization) | $0.60/$0.60 | 2,000+ tok/s |
-| ⚫ **Zen** | Claude Opus 4.6 | Free fallback (rate-limited) | $0 | ~20 tok/s |
-| 🔴 **Direct** | Claude Opus 4.6 | Last-resort paid API | $15/$75 | ~30 tok/s |
+| Head | Model | Alias | Role | Cost/MTok (in/out) | Quality Gate |
+|------|-------|-------|------|--------------------|--------------|
+| **Opus** | Claude Opus 4.6 | `cartu-proxy/claude-opus-4-6` | Interactive chat, complex reasoning | $15/$75 | None (top-tier) |
+| **Sonnet** | Claude Sonnet 4.5 | `cartu-proxy/claude-sonnet-4-5` | Mid-tier tasks | $3/$15 | Disabled (quality high enough) |
+| **MiniMax** | MiniMax-M2.5 | `cartu-proxy/minimax-m2.5-highspeed` | Background tasks, crons, sub-agents | $0.30/$2.40 | Enabled (threshold 0.7) |
+| **Cerebras** | GLM-4.7 | `cartu-proxy/cerebras-glm-4-7` | Context compaction (summarization) | $0.60/$0.60 | Enabled (threshold 0.7) |
 
 ## Architecture
 
 ### 1. Intelligent Routing
 
-When a request arrives, HYDRA inspects the `model` field:
+When a request arrives, HYDRA inspects the `model` field and routes to the correct upstream provider:
 
 ```python
 # Agent requests "cartu-proxy/minimax-m2.5-highspeed"
 #   → Routes to MiniMax API (cheap, fast)
 #
-# Agent requests "cartu-proxy/claude-opus-4-6" 
-#   → Routes to Anthropic OAuth (frontier reasoning)
+# Agent requests "cartu-proxy/claude-opus-4-6"
+#   → Routes to Anthropic API, translates OpenAI ↔ Anthropic format
 #
-# Compaction event detected
-#   → Intercepts and routes to Cerebras GLM-4.7 (2000+ tok/s)
+# Agent requests "cartu-proxy/cerebras-glm-4-7"
+#   → Routes to Cerebras (2000+ tok/s compaction)
+#
+# Agent requests "cartu-proxy/claude-sonnet-4-5"
+#   → Routes to Anthropic API (mid-tier, cost-effective)
 ```
 
-The agent framework controls which model to use per-task. Interactive chat gets Opus. Cron jobs get MiniMax. Compaction gets Cerebras. The proxy handles the rest.
+The agent framework controls which model to use per-task. Interactive chat gets Opus. Cron jobs get MiniMax. Compaction gets Cerebras. The proxy handles format translation, quality gating, and cost tracking.
 
-### 2. The Quality Gate
+### 2. Format Translation
+
+HYDRA accepts OpenAI-format requests and translates them to each provider's native format:
+
+- **Anthropic providers** (Opus, Sonnet): Translates OpenAI `messages` to Anthropic Messages API format, including system prompts, tool definitions, and tool_choice mapping. Responses are converted back to OpenAI format.
+- **OpenAI-compatible providers** (MiniMax, Cerebras): Forwards directly with model field rewriting.
+
+Streaming is supported for both provider types — Anthropic SSE events are translated to OpenAI-format chunks on the fly.
+
+### 3. The Quality Gate
 
 The critical innovation: **pre-flight quality scoring on cheap model outputs.**
 
-When MiniMax handles a request, HYDRA doesn't just forward the response blindly. It:
+When a quality-gated model (MiniMax or Cerebras) handles a **non-streaming** request, HYDRA doesn't just forward the response blindly. It:
 
-1. **Sends the request to MiniMax** (non-streaming, for inspection)
-2. **Scores the response** (0.0 → 1.0) checking for:
-   - XML hallucination patterns (`<minimax:tool_call>`, `<invoke>`, `<FunctionCall>`)
-   - Missing formatting (no bold, no emoji for user-facing output)
-   - Prompt injection artifacts
-   - Response coherence
-3. **If score ≥ 0.5**: Convert to SSE stream → return to agent ✅
-4. **If score < 0.5**: Auto-escalate to Opus → return that instead 🔄
+1. **Sends the request to the cheap model** (non-streaming, for inspection)
+2. **Scores the response** (0.0 → 1.0) across 5 weighted dimensions:
+   - **Completeness** (25%) — Does the response address the prompt? Checks for empty/truncated/refused responses.
+   - **Code Quality** (20%) — If code is present, checks balanced delimiters, Python syntax, placeholder detection.
+   - **Instruction Following** (25%) — Did it follow requested format (JSON, numbered lists, tables, step-by-step)?
+   - **Hallucination** (15%) — Detects fabricated references, suspicious URLs, false memory claims.
+   - **Coherence** (15%) — Checks for repetitive loops, language switching, self-contradictions.
+3. **If score >= 0.7**: Forward the cheap response to the client
+4. **If score < 0.7**: Auto-escalate to Opus and return that instead
 
 ```python
-score, issues = score_response_quality(minimax_response, original_prompt)
+score = score_response(prompt_text, response_text)
 
-if score >= QUALITY_THRESHOLD:
-    return stream_response(minimax_response)  # ~$0.001
+if score.overall >= threshold:  # default 0.7
+    return cheap_response        # ~$0.001
 else:
-    opus_response = call_opus(original_request)
-    log_escalation(model, score, issues)
-    return stream_response(opus_response)      # ~$0.20
+    escalated = escalate_to_opus(original_request)
+    return escalated              # ~$0.20
 ```
+
+**Additional safeguards:**
+
+- **Circuit breaker**: If the escalation rate in a sliding window of 50 requests exceeds 50%, the circuit breaker opens and cheap responses pass through without escalation (prevents runaway Opus costs).
+- **Tool-call bypass**: Responses containing tool_calls skip quality scoring (structured machine-consumed output doesn't benefit from heuristic text scoring).
+- **Streaming bypass**: Streaming requests to quality-gated models skip the gate and stream directly (latency-sensitive path).
+- **Escalation failure fallback**: If the Opus escalation itself fails, the cheap response is returned rather than erroring.
 
 **Production results (Feb 20, 2026):**
 - 173 MiniMax requests processed
@@ -104,77 +122,23 @@ else:
 - 0 escalations to Opus
 - $0.73 total MiniMax spend vs ~$50+ equivalent on Opus
 
-### 3. Prompt Injection Layer
-
-MiniMax M2.5 has specific failure modes (XML hallucinations, missing formatting). Instead of post-processing every response, HYDRA injects a **model-specific prompt suffix** that prevents these issues at generation time:
-
-```python
-MINIMAX_SUFFIX = """
-CRITICAL FORMATTING RULES:
-- NEVER output XML tags like <tool_call>, <invoke>, <FunctionCall>
-- ALWAYS use **bold** for emphasis and headers
-- Use emoji bullets for sections (📊 🔧 ✅ ⚠️)
-- Keep responses concise and actionable
-- If the message requires no response, output exactly: NO_REPLY
-"""
-```
-
-This suffix is injected into the system prompt **only for MiniMax requests** — Opus traffic passes through unmodified.
+> **Note:** These results are from initial testing. Actual quality gate pass rates and cost savings will vary depending on workload complexity, prompt quality, and task types.
 
 ### 4. Cerebras Compaction Engine
 
-When the agent framework triggers context compaction (summarizing conversation history to free tokens), HYDRA intercepts the request and routes it to **Cerebras GLM-4.7** — a model optimized for pure speed:
+When the agent framework triggers context compaction (summarizing conversation history to free tokens), HYDRA routes it to **Cerebras GLM-4.7** — a model optimized for pure speed:
 
 - **2,000+ tokens/second** (vs ~30 tok/s on Opus)
 - **$0.60/MTok** (vs $75/MTok output on Opus)
 - Perfect for summarization tasks where speed matters more than reasoning depth
 
-The compaction is transparent — the agent thinks it's talking to Opus, but gets a response 60x faster at 1/125th the cost.
+The compaction is transparent — the agent requests the Cerebras alias, gets a response 60x faster at 1/125th the cost.
 
-### 5. Failover Chain
+### 5. Error Handling
 
-If any head fails, HYDRA cascades through the chain automatically:
+If an upstream provider returns an error, HYDRA returns the error to the client with appropriate status codes and error details. There is no automatic failover between providers — the agent framework is responsible for choosing which model to use.
 
-```
-1. Primary: Anthropic OAuth (Max20 plan)
-   ↓ rate limit / 5xx
-2. Fallback 1: OpenCode Zen (free Opus)
-   ↓ rate limit / 5xx  
-3. Fallback 2: Anthropic Direct (paid API key)
-   ↓ all failed
-4. Error → agent handles gracefully
-```
-
-Each failover is logged with latency, status code, and cost — visible in real-time on the monitoring dashboard.
-
-## Safety Layer
-
-HYDRA includes a security layer for agent-generated commands:
-
-```python
-BLOCKED_COMMANDS = [
-    r'rm\s+(-rf?\s+)?/',          # rm -rf /
-    r'dd\s+if=/dev/',              # disk destroyer
-    r'mkfs\.',                      # format filesystem
-    r'curl.*\|\s*(bash|sh)',       # pipe to shell
-    r'chmod\s+777',                # world-writable
-    r'shutdown|reboot|poweroff',   # system control
-    r':()\{.*\|.*&\s*\};:',       # fork bomb
-]
-
-PROTECTED_FILES = [
-    'openclaw.json', '.credentials.json',
-    '/etc/shadow', '/etc/passwd', '/etc/sudoers',
-    'id_rsa', 'id_ed25519'
-]
-
-SECRET_PATTERNS = [
-    r'sk-api-\S+', r'sk-or-\S+', r'sk-ant-\S+',
-    r'AIza\S{35}', r'ghp_\S+', r'gho_\S+'
-]
-```
-
-Commands matching these patterns are blocked before reaching the model. API keys in responses are scrubbed before returning to the agent.
+The only "fallback" behavior is within the quality gate: if an escalation to Opus fails, the original cheap model response is returned rather than propagating the error.
 
 ## Real-World Results
 
@@ -185,85 +149,136 @@ Production benchmarks from a 24/7 autonomous agent handling 25+ daily cron jobs,
 | Daily cost (background tasks) | ~$50-80 | ~$0.73 |
 | Compaction latency | 8-12s | 0.3-0.5s |
 | Quality gate pass rate | N/A | 100% |
-| Failover incidents | Manual | Automatic |
-| Models utilized | 1 | 5 |
-| Context preserved | ~60% | ~95% (pre-compaction rescue) |
+| Models utilized | 1 | 4 |
 
-**Cost reduction: 99.7% on background tasks. Zero quality regression.**
+> **Note:** These figures are from initial testing and actual results will vary depending on usage patterns, request volume, and workload mix.
 
 ## Installation
 
 ```bash
-pip install fastapi uvicorn httpx
+pip install fastapi uvicorn httpx python-dotenv
 
 # Clone and configure
-git clone https://github.com/jcartu/hydra-pipeline.git
-cd hydra-pipeline
+cd ~/cato-system/hydra
 cp .env.example .env
-# Edit .env with your API keys
+# Edit .env with your API keys:
+#   MINIMAX_API_KEY, CEREBRAS_API_KEY, ANTHROPIC_API_KEY
+#   HYDRA_API_KEY (optional — for authenticating clients)
 
 # Run
-uvicorn hydra:app --host 0.0.0.0 --port 8889
+uvicorn proxy:app --host 0.0.0.0 --port 8300
+# or simply:
+python proxy.py
 ```
 
 ## Configuration
 
 ```python
-# hydra_config.py
+# config.py
+
+PORT = int(os.getenv("HYDRA_PORT", "8300"))
 
 PROVIDERS = {
-    "anthropic-oauth": {
-        "endpoint": "https://api.anthropic.com/v1/messages",
-        "auth": "oauth",  # or "bearer"
-        "pricing": {"input": 15.0, "output": 75.0, "cache_read": 1.5}
-    },
     "minimax": {
-        "endpoint": "https://api.minimax.io/anthropic/v1/messages",
-        "auth": "bearer",
+        "endpoint": "https://api.minimaxi.com/v1/chat/completions",
+        "auth_header": "Authorization",
+        "auth_prefix": "Bearer ",
         "api_key_env": "MINIMAX_API_KEY",
-        "pricing": {"input": 0.30, "output": 2.40}
+        "pricing": {"input": 0.30, "output": 2.40},
+        "timeout": 60,
     },
     "cerebras": {
         "endpoint": "https://api.cerebras.ai/v1/chat/completions",
-        "auth": "bearer",
+        "auth_header": "Authorization",
+        "auth_prefix": "Bearer ",
         "api_key_env": "CEREBRAS_API_KEY",
         "pricing": {"input": 0.60, "output": 0.60},
-        "role": "compaction_only"
+        "role": "compaction_only",
+        "timeout": 15,
+    },
+    "anthropic-opus": {
+        "endpoint": "https://api.anthropic.com/v1/messages",
+        "api_key_env": "ANTHROPIC_API_KEY",
+        "anthropic": True,
+        "pricing": {"input": 15.0, "output": 75.0},
+        "timeout": 120,
+    },
+    "anthropic-sonnet": {
+        "endpoint": "https://api.anthropic.com/v1/messages",
+        "api_key_env": "ANTHROPIC_API_KEY",
+        "anthropic": True,
+        "pricing": {"input": 3.0, "output": 15.0},
+        "timeout": 120,
     },
 }
 
-QUALITY_GATE = {
-    "threshold": 0.5,
-    "auto_escalate_to": "anthropic-oauth",
-    "check_patterns": ["xml_hallucination", "missing_formatting", "prompt_injection"],
-}
+# Quality gate defaults (overridable via env vars)
+QUALITY_GATE_DEFAULT_THRESHOLD = 0.7  # QUALITY_GATE_THRESHOLD env var
+QUALITY_GATE_ESCALATION_MODEL = "claude-opus-4-6"
+QUALITY_GATE_ESCALATION_PROVIDER = "anthropic-opus"
 
-FAILOVER_CHAIN = [
-    "anthropic-oauth",
-    "opencode-zen",
-    "anthropic-direct",
-]
+MODEL_ALIASES = {
+    "cartu-proxy/minimax-m2.5-highspeed": {
+        "provider": "minimax",
+        "upstream_model": "MiniMax-M2.5",
+        "quality_gate": {"enabled": True, "threshold": 0.7, ...},
+    },
+    "cartu-proxy/claude-opus-4-6": {
+        "provider": "anthropic-opus",
+        "upstream_model": "claude-opus-4-6",
+        # No quality gate
+    },
+    "cartu-proxy/claude-sonnet-4-5": {
+        "provider": "anthropic-sonnet",
+        "upstream_model": "claude-sonnet-4-5-20250514",
+        "quality_gate": {"enabled": False, ...},  # Disabled
+    },
+    "cartu-proxy/cerebras-glm-4-7": {
+        "provider": "cerebras",
+        "upstream_model": "zai-glm-4.7",
+        "quality_gate": {"enabled": True, "threshold": 0.7, ...},
+    },
+}
 ```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HYDRA_PORT` | `8300` | Port to listen on |
+| `HYDRA_API_KEY` | (empty) | API key for client auth (disabled if empty) |
+| `MAX_OUTPUT_TOKENS` | `16384` | Max output tokens cap per request |
+| `QUALITY_GATE_THRESHOLD` | `0.7` | Default quality score threshold |
+| `QUALITY_GATE_ESCALATION_MODEL` | `claude-opus-4-6` | Model to escalate to |
+| `QUALITY_GATE_ESCALATION_PROVIDER` | `anthropic-opus` | Provider for escalation |
+| `QUALITY_GATE_CIRCUIT_BREAKER_RATE` | `0.5` | Max escalation rate before circuit opens |
+| `COST_LOG_PATH` | `/app/data/cost.jsonl` | Path for cost log file |
+| `ESCALATION_LOG_PROMPTS` | `false` | Include prompt text in escalation logs |
+| `MINIMAX_API_KEY` | — | MiniMax API key |
+| `CEREBRAS_API_KEY` | — | Cerebras API key |
+| `ANTHROPIC_API_KEY` | — | Anthropic API key |
 
 ## API Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/v1/messages` | POST | Main inference (Anthropic-compatible) |
-| `/costs` | GET | Cost tracking by provider (24h rolling) |
-| `/providers` | GET | Provider health and status |
-| `/quality` | GET | Quality gate statistics |
-| `/health` | GET | Proxy health check |
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/v1/chat/completions` | POST | Yes | Main inference endpoint (OpenAI-compatible) |
+| `/v1/models` | GET | Yes | List available model aliases |
+| `/health` | GET | No | Provider health check (add `?deep=true` to probe upstream) |
+| `/stats` | GET | Yes | Usage statistics and estimated costs (JSON) |
+| `/dashboard` | GET | Yes | Quality gate dashboard (HTML, auto-refreshes every 10s) |
 
 ## Monitoring Dashboard
 
-HYDRA includes a real-time monitoring sidebar showing:
+HYDRA includes a real-time HTML monitoring dashboard at `/dashboard` showing:
 
-- **Model Activity** — which heads are lit up, call counts, costs
-- **Quality Gate** — pass rate, escalation count
-- **Cost Tracking** — actual spend vs estimated (flat-plan aware)
-- **System Metrics** — CPU, RAM, GPU utilization
-- **Failover Events** — logged with latency and reason
+- **Total Requests** — overall request count
+- **Quality Gate Stats** — checks performed, pass count, escalation count, escalation rate
+- **Average Quality Score** — mean score across all quality gate checks
+- **Cost Tracking** — estimated cost saved (cheap passes) vs escalation cost spent
+- **Circuit Breaker** — current status (OPEN/CLOSED), trip count, window escalation rate
+- **Streaming Bypasses** — count of streaming requests that skipped quality gating
+- **Per-Model Breakdown** — table with alias, provider, request count, escalation count, threshold, estimated cost
 
 ## How It Fits Together
 
@@ -273,26 +288,35 @@ HYDRA includes a real-time monitoring sidebar showing:
         ▼
    ┌──────────┐     ┌─────────────┐
    │  Agent   │────▶│    HYDRA    │──▶ Opus (chat)
-   │Framework │     │   :8889     │──▶ MiniMax (crons)
-   │          │     │             │──▶ Cerebras (compaction)
-   └──────────┘     └─────────────┘──▶ Zen (fallback)
-        │                  │
-        ▼                  ▼
-   ┌──────────┐     ┌─────────────┐
-   │  Vector  │     │  Dashboard  │
-   │    DB    │     │  (optional) │
-   └──────────┘     └─────────────┘
+   │Framework │     │   :8300     │──▶ Sonnet (mid-tier)
+   │          │     │             │──▶ MiniMax (crons)
+   └──────────┘     └─────────────┘──▶ Cerebras (compaction)
+                          │
+                          ▼
+                    ┌─────────────┐
+                    │  Dashboard  │
+                    │  /dashboard │
+                    └─────────────┘
 ```
 
 ## Why "HYDRA"?
 
-In mythology, the Hydra had multiple heads — cut one off and two more grow back. This pipeline works the same way: multiple model heads, each specialized for a different task. If one provider goes down, the others take over. The system is resilient by design.
+In mythology, the Hydra had multiple heads — cut one off and two more grow back. This pipeline works the same way: multiple model heads, each specialized for a different task. The system is resilient by design.
 
 Also: **H**ybrid **Y**ielding **D**istributed **R**outing **A**rchitecture. But mostly the heads thing.
 
+## Planned Features
+
+The following features are on the roadmap but **not yet implemented**:
+
+- **Failover chain**: Automatic cascading through providers (e.g., OAuth → free fallback → paid API) when a provider returns errors or hits rate limits. Currently, provider errors are returned directly to the client.
+- **Prompt injection layer**: Model-specific prompt suffixes to prevent known failure modes (e.g., XML hallucinations in MiniMax) at generation time rather than relying solely on post-hoc quality scoring.
+- **Safety layer**: Command blocking (dangerous shell commands), protected file detection, and API key scrubbing in responses before they reach the agent.
+- **Free fallback provider**: Integration with a free-tier Opus provider (e.g., OpenCode Zen) as a zero-cost fallback for rate-limited scenarios.
+
 ## Related
 
-- **[OpenClaw](https://github.com/openclaw/openclaw)** — The autonomous AI agent framework this pipeline was built for
+- **[Nanobot](https://github.com/nanobot-ai/nanobot)** — The autonomous AI agent framework this pipeline was built for
 - **[MiniMax](https://www.minimax.io/)** — Frontier model that makes cheap bulk inference possible
 - **[Cerebras](https://cerebras.ai/)** — 2000+ tok/s inference for compaction tasks
 
